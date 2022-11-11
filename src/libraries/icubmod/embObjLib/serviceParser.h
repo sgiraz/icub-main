@@ -254,6 +254,8 @@ typedef struct
     std::vector<servMC_encoder_t>       encoder1s;
     std::vector<servMC_encoder_t>       encoder2s;
 
+    std::vector<servAnalogSensor_t>     sensors;
+
     //std::vector<int>                    joint2set;
     //int                                 numofjointsets;
     //std::vector<eOmc_jointset_configuration_t> jointset_cfgs;
@@ -262,8 +264,10 @@ typedef struct
 
 typedef struct
 {
-    uint16_t        tbd1;
-    std::vector<int>     tbd2;
+    // uint16_t        tbd1;
+    // std::vector<int>     tbd2;
+    uint16_t                         acquisitionrate;
+    std::vector<servAnalogSensor_t>  enabledsensors;
 } servMCsettings_t;
 
 

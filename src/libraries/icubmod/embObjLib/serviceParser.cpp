@@ -3433,13 +3433,80 @@ bool ServiceParser::check_motion(Searchable &config)
 
     if(true == has_PROPERTIES_POS)
     {
-        // i get .location and nothing else
-
         Bottle b_PROPERTIES_POS_location = b_PROPERTIES_POS.findGroup("location");
         if(b_PROPERTIES_POS_location.isNull())
         {
             yError() << "ServiceParser::check_motion() cannot find PROPERTIES.POS.location";
             return false;
+        }
+
+        // check for sensors
+        Bottle b_PROPERTIES_SENSORS = Bottle(b_PROPERTIES_POS.findGroup("SENSORS"));
+        if(b_PROPERTIES_SENSORS.isNull())
+        {
+            yError() << "ServiceParser::check_motion() cannot find b_PROPERTIES_POS.SENSORS";
+            return false;
+        }
+
+        // Add params only for pos
+        Bottle b_PROPERTIES_SENSORS_id;
+        Bottle b_PROPERTIES_SENSORS_pos_port;
+        Bottle b_PROPERTIES_SENSORS_pos_connector;
+        Bottle b_PROPERTIES_SENSORS_pos_CALIBRATION;
+        Bottle b_PROPERTIES_SENSORS_pos_CALIBRATION_type;
+        Bottle b_PROPERTIES_SENSORS_pos_CALIBRATION_rotation;
+        Bottle b_PROPERTIES_SENSORS_pos_CALIBRATION_offset;
+        Bottle b_PROPERTIES_SENSORS_pos_CALIBRATION_invertDirection;
+
+        b_PROPERTIES_SENSORS_id = Bottle(b_PROPERTIES_SENSORS.findGroup("id"));
+        if(b_PROPERTIES_SENSORS_id.isNull())
+        {
+            yError() << "ServiceParser::check_motion() cannot find b_PROPERTIES_POS.SENSORS.id";
+            return false;
+        }
+
+        b_PROPERTIES_SENSORS_pos_port = Bottle(b_PROPERTIES_SENSORS.findGroup("port"));
+        if(b_PROPERTIES_SENSORS_pos_port.isNull())
+        {
+            yError() << "ServiceParser::check_analog() cannot find PROPERTIES.SENSORS.port";
+            return false;
+        }
+
+        b_PROPERTIES_SENSORS_pos_connector = Bottle(b_PROPERTIES_SENSORS.findGroup("connector"));
+        if(b_PROPERTIES_SENSORS_pos_connector.isNull())
+        {
+            yError() << "ServiceParser::check_analog() cannot find PROPERTIES.SENSORS.connector";
+            return false;
+        }
+
+        b_PROPERTIES_SENSORS_pos_CALIBRATION = Bottle(b_PROPERTIES_SENSORS.findGroup("CALIBRATION"));
+        if(b_PROPERTIES_SENSORS_pos_CALIBRATION.isNull())
+        {
+            yWarning() << "ServiceParser::check_analog() cannot find PROPERTIES.SENSORS.CALIBRATION. Using neutral values (ROT:zero, 0.0, false)";
+        }
+        else
+        {
+            b_PROPERTIES_SENSORS_pos_CALIBRATION_type = Bottle(b_PROPERTIES_SENSORS_pos_CALIBRATION.findGroup("type"));
+            if(b_PROPERTIES_SENSORS_pos_CALIBRATION_type.isNull())
+            {
+                yWarning() << "ServiceParser::check_analog() cannot find PROPERTIES.SENSORS.CALIBRATION.type. Using value TYPE::decideg";
+            }
+
+            b_PROPERTIES_SENSORS_pos_CALIBRATION_rotation = Bottle(b_PROPERTIES_SENSORS_pos_CALIBRATION.findGroup("rotation"));
+            if(b_PROPERTIES_SENSORS_pos_CALIBRATION_rotation.isNull())
+            {
+                yWarning() << "ServiceParser::check_analog() cannot find PROPERTIES.SENSORS.CALIBRATION.rotation. Using value ROT::zero";
+            }
+            b_PROPERTIES_SENSORS_pos_CALIBRATION_offset = Bottle(b_PROPERTIES_SENSORS_pos_CALIBRATION.findGroup("offset"));
+            if(b_PROPERTIES_SENSORS_pos_CALIBRATION_offset.isNull())
+            {
+                yWarning() << "ServiceParser::check_analog() cannot find PROPERTIES.SENSORS.CALIBRATION.offset. Using value 0.0";
+            }
+            b_PROPERTIES_SENSORS_pos_CALIBRATION_invertDirection = Bottle(b_PROPERTIES_SENSORS_pos_CALIBRATION.findGroup("invertDirection"));
+            if(b_PROPERTIES_SENSORS_pos_CALIBRATION_invertDirection.isNull())
+            {
+                yWarning() << "ServiceParser::check_analog() cannot find PROPERTIES.SENSORS.CALIBRATION.invertDirection. Using value false";
+            }
         }
 
         int tmp = b_PROPERTIES_POS_location.size();
@@ -3484,6 +3551,146 @@ bool ServiceParser::check_motion(Searchable &config)
                 return false;
             }
         }
+
+        int numsensors = b_PROPERTIES_SENSORS_id.size() - 1;    // first position of bottle contains the tag "id"
+
+
+        // part which is present only in POS service
+        mc_service.properties.sensors.resize(0);
+        for(int i = 0; i < numsensors; i++)
+        {
+            servAnalogSensor_t item {};
+            item.clear();
+
+            // id
+            convert(b_PROPERTIES_SENSORS_id.get(i+1).asString(), item.id, formaterror);
+
+            // port
+            parse_POS_port(b_PROPERTIES_SENSORS_pos_port.get(i+1).asString(), item.pos.port, formaterror);
+
+            // connector
+            parse_POS_connector(b_PROPERTIES_SENSORS_pos_connector.get(i+1).asString(), item.boardtype, item.pos.connector, formaterror);
+
+            bool wehaveCALIBRATION = b_PROPERTIES_SENSORS_pos_CALIBRATION.isNull() ? false : true;
+
+            item.pos.calibration.clear();
+            item.pos.calibration.type = eoas_pos_TYPE_decideg;
+
+            if(wehaveCALIBRATION)
+            {
+                // then we need to parse four values: type, rotation, offset, invertDirection
+
+                // type 
+                if(false == b_PROPERTIES_SENSORS_pos_CALIBRATION_type.isNull())
+                {
+                    parse_POS_CALIB_type(b_PROPERTIES_SENSORS_pos_CALIBRATION_type.get(i+1).asString(), item.pos.calibration.type, formaterror);
+                }
+
+                // rotation
+                if(false == b_PROPERTIES_SENSORS_pos_CALIBRATION_rotation.isNull())
+                {
+                    parse_POS_CALIB_rotation(b_PROPERTIES_SENSORS_pos_CALIBRATION_rotation.get(i+1).asString(), item.pos.calibration.rotation, formaterror);
+                }
+
+                // offset
+                if(false == b_PROPERTIES_SENSORS_pos_CALIBRATION_offset.isNull())
+                {
+                    item.pos.calibration.offset = b_PROPERTIES_SENSORS_pos_CALIBRATION_offset.get(i+1).asFloat32();
+                }
+
+                // invertdirection
+                if(false == b_PROPERTIES_SENSORS_pos_CALIBRATION_invertDirection.isNull())
+                {
+                    item.pos.calibration.invertdirection = b_PROPERTIES_SENSORS_pos_CALIBRATION_invertDirection.get(i+1).asBool();
+                }
+
+            }
+
+            // fill the properties of the pos service
+            mc_service.properties.sensors.push_back(item);
+        }
+
+        Bottle b_SETTINGS = Bottle(b_PROPERTIES_POS.findGroup("SETTINGS"));
+        if(b_SETTINGS.isNull())
+        {
+            yError() << "ServiceParser::check_analog() cannot find SETTINGS";
+            return false;
+        }
+        else
+        {
+
+            Bottle b_SETTINGS_acquisitionRate = Bottle(b_SETTINGS.findGroup("acquisitionRate"));
+            if(b_SETTINGS_acquisitionRate.isNull())
+            {
+                yError() << "ServiceParser::check_analog() cannot find SETTINGS.acquisitionRate";
+                return false;
+            }
+            Bottle b_SETTINGS_enabledSensors = Bottle(b_SETTINGS.findGroup("enabledSensors"));
+            if(b_SETTINGS_enabledSensors.isNull())
+            {
+                yError() << "ServiceParser::check_analog() cannot find SETTINGS.enabledSensors";
+                return false;
+            }
+
+            size_t s = b_SETTINGS_enabledSensors.size();
+            size_t numenabledsensors = (0 == s) ? (0) : (s - 1) ;    // first position of bottle contains the tag "enabledSensors"
+
+            // the enabled must be <= the sensors.
+            if( numenabledsensors > mc_service.properties.sensors.size() )
+            {
+                yError() << "ServiceParser::check_analog() in SETTINGS.enabledSensors there are too many items with respect to supported sensors:" << numenabledsensors << "vs." << mc_service.properties.sensors.size();
+                return false;
+            }
+
+            convert(b_SETTINGS_acquisitionRate.get(1).asInt32(), mc_service.settings.acquisitionrate, formaterror);
+
+
+            mc_service.settings.enabledsensors.resize(0);
+
+            for(size_t i=0; i<numenabledsensors; i++)
+            {
+                servAnalogSensor_t founditem;
+
+                std::string s_enabled_id = b_SETTINGS_enabledSensors.get(i+1).asString();
+    //            const char *str = s_enabled_id.c_str();
+    //            std::string cpp_str = str;
+
+                // we must now search inside the whole vector<> mc_service.properties.sensors if we find an id which matches s_enabled_id ....
+                // if we dont, ... we issue a warning.
+                // if we find, ... we do a pushback of it inside
+                bool found = false;
+                // i decide to use a brute force search ... for now
+                for(size_t n=0; n<mc_service.properties.sensors.size(); n++)
+                {
+                    servAnalogSensor_t item = mc_service.properties.sensors.at(n);
+                    //if(item.id == cpp_str)
+                    if(item.id == s_enabled_id)
+                    {
+                        found = true;
+                        founditem = item;
+                        break;
+                    }
+                }
+
+                if(true == found)
+                {
+                    mc_service.settings.enabledsensors.push_back(founditem);
+                }
+
+            }
+
+            // in here we issue an error if we dont have at least one enabled sensor
+
+            if(0 == mc_service.settings.enabledsensors.size())
+            {
+                yError() << "ServiceParser::check_motion() could not find any item in SETTINGS.enabledSensors which matches what in PROPERTIES.SENSORS.id";
+                return false;
+            }
+
+        }
+
+
+
 
     } // has_PROPERTIES_POS
 
@@ -4229,15 +4436,16 @@ bool ServiceParser::parseService(Searchable &config, servConfigMC_t &mcconfig)
                 pos->config.boardconfig[b].canloc.addr = mc_service.properties.poslocations[b].addr;
                 pos->config.boardconfig[b].canloc.port = mc_service.properties.poslocations[b].port;
 
-                for(size_t s=0; s<eOas_pos_sensorsinboard_maxnumber; s++)
+                for(size_t s=0; s < mc_service.settings.enabledsensors.size(); s++)
                 {
-                    pos->config.boardconfig[b].sensors[s].connector = s;
-                    pos->config.boardconfig[b].sensors[s].type = eoas_pos_TYPE_decideg;
-                    pos->config.boardconfig[b].sensors[s].port = static_cast<eObrd_portpos_t>(s);
+                    servAnalogSensor_t snsr = mc_service.settings.enabledsensors[s];
+                    pos->config.boardconfig[b].sensors[s].connector = snsr.pos.connector;
+                    pos->config.boardconfig[b].sensors[s].type = snsr.pos.calibration.type;
+                    pos->config.boardconfig[b].sensors[s].port = snsr.pos.port;
                     pos->config.boardconfig[b].sensors[s].enabled = 1;
-                    pos->config.boardconfig[b].sensors[s].invertdirection = 0;
-                    pos->config.boardconfig[b].sensors[s].rotation = eoas_pos_ROT_zero;
-                    pos->config.boardconfig[b].sensors[s].offset = 0;
+                    pos->config.boardconfig[b].sensors[s].invertdirection = snsr.pos.calibration.invertdirection;
+                    pos->config.boardconfig[b].sensors[s].rotation = snsr.pos.calibration.rotation;
+                    pos->config.boardconfig[b].sensors[s].offset = static_cast<int16_t>(10 * snsr.pos.calibration.offset);
                 }
             }
 
